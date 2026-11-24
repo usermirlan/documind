@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+@theme {
+  --color-paper: #f7f5f0;
+  --color-card: #ffffff;
+  --color-sunk: #efece5;
+  --color-line: #e2ddd2;
+  --color-ink: #1d1b17;
+  --color-dim: #6d675c;
+  --color-accent: #0f766e;
+  --color-accent-soft: #d8efeb;
+  --color-mark: #fde68a;
+  --color-bad: #b42318;
+  --color-ok: #15803d;
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Source Serif 4 Variable", ui-serif, Georgia, serif;
+}
+
+html { color-scheme: light; }
+body { background: var(--color-paper); color: var(--color-ink); }
+::selection { background: var(--color-mark); }
+
+.cite {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 1.35rem; height: 1.2rem; padding: 0 .3rem; margin: 0 .1rem;
+  border-radius: .35rem; font-size: .7rem; font-weight: 600; vertical-align: .15em;
+  background: var(--color-accent-soft); color: var(--color-accent); cursor: pointer;
+}
+.cite:hover, .cite[aria-pressed="true"] { background: var(--color-accent); color: #fff; }
+
+@keyframes blink { 50% { opacity: 0; } }
+.streaming > :last-child::after { content: "▍"; margin-left: 1px; color: var(--color-accent); animation: blink 1s steps(1) infinite; }
+@media (prefers-reduced-motion: reduce) { .streaming > :last-child::after { animation: none; } }

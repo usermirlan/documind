@@ -1,0 +1,27 @@
+# Render Blueprint: the API as a free Docker web service. Postgres (with pgvector) comes from Neon.
+# The free plan has 512 MB RAM, too little for the local model, so production uses Gemini embeddings.
+services:
+  - type: web
+    name: documind-api
+    runtime: docker
+    plan: free
+    region: frankfurt
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    envVars:
+      - key: EMBED_PROVIDER
+        value: gemini
+      - key: PRELOAD_MODEL       # Docker build arg: don't bake the local model into the image
+        value: "0"
+      - key: DATABASE_URL
+        sync: false          # Neon connection string
+      - key: GEMINI_API_KEY
+        sync: false          # https://aistudio.google.com/apikey
+      - key: LLM_API_KEY
+        sync: false          # https://console.groq.com
+      - key: CORS_ORIGINS
+        sync: false          # https://<your-app>.vercel.app
+      - key: SECRET_KEY
+        generateValue: true
