@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import auth, chats, documents
+from .api import auth, chats, documents, studio
 from .config import settings
 from .db import SessionLocal
 from .i18n import lang_var, pick_lang
@@ -62,7 +62,7 @@ app.add_middleware(
     CORSMiddleware, allow_origins=settings.cors_origins, allow_credentials=True,
     allow_methods=["*"], allow_headers=["*"],
 )
-for r in (auth.router, documents.router, chats.router):
+for r in (auth.router, documents.router, chats.router, studio.router):
     app.include_router(r)
 
 

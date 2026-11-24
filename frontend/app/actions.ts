@@ -7,7 +7,7 @@ import { api, ApiError } from "@/lib/api";
 import { isLocale, LOCALE_COOKIE } from "@/lib/i18n";
 import { getDict } from "@/lib/locale";
 import { getToken, TOKEN_COOKIE } from "@/lib/session";
-import type { Chat, Doc, Hit, User } from "@/lib/types";
+import type { Chat, Doc, Hit, Outline, Presentation, Summary, User } from "@/lib/types";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -104,4 +104,47 @@ export async function search(query: string, documentIds: string[] = []): Promise
   } catch (e) {
     return await fail(e);
   }
+}
+
+// ---- presentations ---------------------------------------------------------
+
+export type NewPresentation = {
+  source: "topic" | "documents"; topic: string; document_ids: string[];
+  lang: string; style: string; n_slides: number; audience: string;
+};
+
+async function call<T>(path: string, method = "GET", body?: unknown): Promise<Result<T>> {
+  try {
+    return { ok: true, data: await api<T>(path, { method, token: await token(), body }) };
+  } catch (e) {
+    return await fail(e);
+  }
+}
+
+export async function createPresentation(input: NewPresentation) {
+  const r = await call<Presentation>("/api/presentations", "POST", input);
+  if (r.ok) revalidatePath("/app/presentations");
+  return r;
+}
+export const getPresentation = async (id: string) => call<Presentation>(`/api/presentations/${id}`);
+export const savePresentation = async (id: string, patch: { outline?: Outline; style?: string }) =>
+  call<Presentation>(`/api/presentations/${id}`, "PATCH", patch);
+export const generatePresentation = async (id: string) => call<Presentation>(`/api/presentations/${id}/generate`, "POST");
+export const regenerateOutline = async (id: string) => call<Presentation>(`/api/presentations/${id}/outline`, "POST");
+
+export async function deletePresentation(id: string) {
+  await api(`/api/presentations/${id}`, { method: "DELETE", token: await token() });
+  revalidatePath("/app/presentations");
+  redirect("/app/presentations");
+}
+
+// ---- summaries -------------------------------------------------------------
+
+export async function createSummary(document_id: string, length: string, lang: string) {
+  return call<Summary>("/api/summaries", "POST", { document_id, length, lang });
+}
+export const getSummary = async (id: string) => call<Summary>(`/api/summaries/${id}`);
+export const listSummaries = async () => call<Summary[]>("/api/summaries");
+export async function deleteSummary(id: string) {
+  await api(`/api/summaries/${id}`, { method: "DELETE", token: await token() });
 }

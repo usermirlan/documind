@@ -16,7 +16,8 @@ export default async function Header() {
           {user && (
             <nav className="hidden items-center gap-1 sm:flex">
               <Link href="/app" className={link}>{d.nav.documents}</Link>
-              <Link href="/app/search" className={link}>{d.nav.search}</Link>
+              <Link href="/app/presentations" className={link}>{d.nav.presentations}</Link>
+              <Link href="/app/summaries" className={link}>{d.nav.summaries}</Link>
             </nav>
           )}
         </div>

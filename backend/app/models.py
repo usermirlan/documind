@@ -93,3 +93,42 @@ class Message(Base):
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
     chat: Mapped[Chat] = relationship(back_populates="messages")
+
+
+class Summary(Base):
+    __tablename__ = "summaries"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), index=True)
+    length: Mapped[str] = mapped_column(String(16))  # short | detailed
+    lang: Mapped[str] = mapped_column(String(5))
+    status: Mapped[str] = mapped_column(String(16), default="working")  # working | ready | error
+    error: Mapped[str | None] = mapped_column(Text)
+    # {summary, key_points[], dates[], names[], numbers[], action_items[]}
+    data: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+
+    document: Mapped[Document] = relationship()
+
+
+class Presentation(Base):
+    __tablename__ = "presentations"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    source: Mapped[str] = mapped_column(String(16))  # topic | documents
+    topic: Mapped[str] = mapped_column(Text, default="")
+    document_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    lang: Mapped[str] = mapped_column(String(5))
+    style: Mapped[str] = mapped_column(String(20))
+    n_slides: Mapped[int] = mapped_column(Integer)
+    audience: Mapped[str] = mapped_column(String(200), default="")
+    # draft_outline -> outline -> generating -> ready | error
+    status: Mapped[str] = mapped_column(String(16), default="draft_outline")
+    error: Mapped[str | None] = mapped_column(Text)
+    outline: Mapped[dict] = mapped_column(JSON, default=dict)   # {title, subtitle, slides:[{type,title,brief}]}
+    slides: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)

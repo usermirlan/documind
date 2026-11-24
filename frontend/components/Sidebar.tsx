@@ -27,6 +27,8 @@ export default function Sidebar({ chats }: { chats: ChatSummary[] }) {
       </button>
       <nav className="flex flex-col gap-0.5">
         <Link href="/app" className={item(path === "/app")}>📄 {d.nav.documents}</Link>
+        <Link href="/app/presentations" className={item(path.startsWith("/app/presentations"))}>🖼 {d.nav.presentations}</Link>
+        <Link href="/app/summaries" className={item(path === "/app/summaries")}>📝 {d.nav.summaries}</Link>
         <Link href="/app/search" className={item(path === "/app/search")}>🔎 {d.nav.search}</Link>
       </nav>
       <div className="min-h-0 flex-1 overflow-y-auto">
