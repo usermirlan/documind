@@ -150,7 +150,7 @@ export default function DeckEditor({ initial, onEditOutline }: { initial: Presen
           {slides.map((x, i) => (
             <button key={i} onClick={() => setCur(i)} aria-label={`${i + 1}`} aria-pressed={cur === i}
               className={`appear group relative overflow-hidden rounded-md border-2 text-left ${cur === i ? "border-accent" : "border-transparent hover:border-line"}`}>
-              <span className="absolute top-1 left-1 z-10 rounded bg-black/50 px-1 text-[10px] text-white">{i + 1}</span>
+              <span className="absolute right-1 bottom-1 z-10 rounded bg-black/55 px-1 text-[10px] leading-4 text-white">{i + 1}</span>
               <div className="pointer-events-none">
                 <SlidePreview slide={x} style={p.style} n={i + 1} total={slides.length} deckTitle={p.title}
                   imageSrc={x.image_id ? imageUrl(x.image_id) : null} imageState={x.image_id ? p.images?.[x.image_id] : undefined} />

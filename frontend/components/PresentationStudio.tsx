@@ -67,7 +67,7 @@ export default function PresentationStudio({ initial }: { initial: Presentation 
 
   return (
     <div className="flex flex-col gap-6">
-      <div className={`flex flex-wrap items-start justify-between gap-4 ${p.status === "ready" && !editing ? "hidden" : ""}`}>
+      <div className={`flex flex-wrap items-start justify-between gap-4 ${(p.status === "ready" || p.status === "generating") && !editing ? "hidden" : ""}`}>
         <div className="min-w-0">
           <h1 className="font-serif text-3xl font-semibold">{p.title}</h1>
           <p className="mt-1 text-sm text-dim">
