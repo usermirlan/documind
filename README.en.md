@@ -8,6 +8,7 @@
 
 ## Features
 
+- **Gamma-style decks:** slides stream in live; free keyless AI images (Pollinations) with a local gradient fallback; Lucide icons; click-to-edit text with autosave; per-slide AI actions (rewrite, shorter, longer, simpler, more visual, new image, custom) and deck-wide AI edits; fullscreen present mode; public share links; PPTX with pictures and PDF export.
 - **AI presentation generator:** from a topic or from documents; language (Kyrgyz/Russian/English), 5–15 slides, 6 styles, optional audience. Two steps: an editable outline, then full slide content with speaker notes. 11 slide types (title, agenda, bullets, comparison, stats, timeline, chart, process, quote, conclusion, thanks). Real, editable `.pptx` built with python-pptx — native PowerPoint charts, slide numbers, notes; no image APIs. Live HTML preview in the same style.
 - **Summaries:** short or detailed summary, key points, dates, names, numbers and action items with page references; large documents are condensed map-reduce style to fit free-tier limits.
 
@@ -22,7 +23,7 @@
 
 ## Stack
 
-FastAPI · SQLAlchemy 2 · Alembic · PostgreSQL 16 + pgvector · fastembed (local multilingual model) or Gemini embeddings · any OpenAI-compatible LLM (Groq by default) · Next.js 16 · React 19 · Tailwind 4 · python-pptx · pytest on real Postgres (21 tests).
+FastAPI · SQLAlchemy 2 · Alembic · PostgreSQL 16 + pgvector · fastembed (local multilingual model) or Gemini embeddings · any OpenAI-compatible LLM (Groq by default) · Next.js 16 · React 19 · Tailwind 4 · python-pptx · pytest on real Postgres (27 tests).
 
 ## Run
 

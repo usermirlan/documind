@@ -17,7 +17,10 @@ if settings.secret_key == "dev-only-change-me" and settings.cors_origins and set
 
 
 def _resume_ingestion() -> None:
+    from .presentations.images import resume_all
     from .rag.ingest import ingest, resume_pending
+
+    resume_all()
 
     with SessionLocal() as db:
         ids = resume_pending(db)

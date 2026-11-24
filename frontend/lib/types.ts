@@ -34,12 +34,15 @@ export type SlideData = {
   steps?: { title: string; text: string }[];
   chart?: { kind: "bar" | "column" | "pie" | "line"; labels: string[]; values: number[]; unit?: string };
   quote?: string; author?: string; notes?: string;
+  layout?: "auto" | "image-left" | "image-right" | "image-top" | "none";
+  image_prompt?: string; image_id?: string; icons?: string[];
 };
 export type Presentation = {
   id: string; title: string; source: "topic" | "documents"; topic: string; document_ids: string[];
   lang: "ky" | "ru" | "en"; style: string; n_slides: number; audience: string;
   status: "draft_outline" | "outline" | "generating" | "ready" | "error"; error: string | null;
   outline: Outline | Record<string, never>; slides: SlideData[]; created_at: string; updated_at: string;
+  images: Record<string, "pending" | "ready" | "fallback">; share_token: string | null;
 };
 export type SummaryData = {
   summary: string; key_points: string[];

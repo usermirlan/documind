@@ -7,7 +7,7 @@ import { api, ApiError } from "@/lib/api";
 import { isLocale, LOCALE_COOKIE } from "@/lib/i18n";
 import { getDict } from "@/lib/locale";
 import { getToken, TOKEN_COOKIE } from "@/lib/session";
-import type { Chat, Doc, Hit, Outline, Presentation, Summary, User } from "@/lib/types";
+import type { Chat, Doc, Hit, Outline, Presentation, SlideData, Summary, User } from "@/lib/types";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -127,7 +127,7 @@ export async function createPresentation(input: NewPresentation) {
   return r;
 }
 export const getPresentation = async (id: string) => call<Presentation>(`/api/presentations/${id}`);
-export const savePresentation = async (id: string, patch: { outline?: Outline; style?: string }) =>
+export const savePresentation = async (id: string, patch: { outline?: Outline; style?: string; slides?: SlideData[]; title?: string }) =>
   call<Presentation>(`/api/presentations/${id}`, "PATCH", patch);
 export const generatePresentation = async (id: string) => call<Presentation>(`/api/presentations/${id}/generate`, "POST");
 export const regenerateOutline = async (id: string) => call<Presentation>(`/api/presentations/${id}/outline`, "POST");
@@ -148,3 +148,10 @@ export const listSummaries = async () => call<Summary[]>("/api/summaries");
 export async function deleteSummary(id: string) {
   await api(`/api/summaries/${id}`, { method: "DELETE", token: await token() });
 }
+
+export const slideAI = async (id: string, index: number, action: string, instruction = "") =>
+  call<Presentation>(`/api/presentations/${id}/slides/${index}/ai`, "POST", { action, instruction });
+export const deckAI = async (id: string, instruction: string) =>
+  call<Presentation>(`/api/presentations/${id}/ai`, "POST", { instruction });
+export const sharePresentation = async (id: string, enabled: boolean) =>
+  call<Presentation>(`/api/presentations/${id}/share`, "POST", { enabled });

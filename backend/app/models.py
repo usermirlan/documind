@@ -129,6 +129,23 @@ class Presentation(Base):
     status: Mapped[str] = mapped_column(String(16), default="draft_outline")
     error: Mapped[str | None] = mapped_column(Text)
     outline: Mapped[dict] = mapped_column(JSON, default=dict)   # {title, subtitle, slides:[{type,title,brief}]}
+    share_token: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
     slides: Mapped[list[dict]] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
+
+
+class SlideImage(Base):
+    """Picture for one slide. Bytes live in Postgres so free hosts with ephemeral disks keep them."""
+
+    __tablename__ = "slide_images"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    presentation_id: Mapped[str] = mapped_column(ForeignKey("presentations.id", ondelete="CASCADE"), index=True)
+    prompt: Mapped[str] = mapped_column(Text)
+    seed: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(16), default="pending")  # pending | ready | fallback
+    source: Mapped[str] = mapped_column(String(20), default="")       # pollinations | placeholder
+    mime: Mapped[str] = mapped_column(String(40), default="image/jpeg")
+    data: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)

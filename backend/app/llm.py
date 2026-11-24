@@ -116,3 +116,87 @@ def complete_json(system: str, user: str, *, max_tokens: int = 4000, attempts: i
             last_error = f"invalid JSON: {e}"
             messages = messages[:2] + [{"role": "user", "content": user + "\n\nReturn ONLY one valid JSON object."}]
     raise LLMError(t("AI кызматы ката берди: {error}", error=last_error[:300]))
+
+
+def stream_json(system: str, user: str, *, max_tokens: int = 6000) -> Iterator[str]:
+    """Stream the raw text of a JSON answer (JSON mode when the provider supports it)."""
+    _require_key()
+    messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+    for json_mode in (True, False):
+        extra = {"max_tokens": max_tokens, "temperature": 0.5, "stream": True}
+        if json_mode:
+            extra["response_format"] = {"type": "json_object"}
+        try:
+            with httpx.Client(timeout=httpx.Timeout(120, connect=10)) as client, \
+                    client.stream("POST", _url(), json=_body(messages, **extra), headers=_headers()) as r:
+                if r.status_code == 400 and json_mode:
+                    continue  # provider can't stream JSON mode: plain streaming
+                if r.status_code != 200:
+                    raise LLMError(t("AI кызматы ката берди: {error}", error=f"{r.status_code} {r.read()[:200]!r}"))
+                for line in r.iter_lines():
+                    if not line.startswith("data:"):
+                        continue
+                    data = line[5:].strip()
+                    if data == "[DONE]":
+                        return
+                    try:
+                        delta = json.loads(data)["choices"][0]["delta"].get("content")
+                    except (ValueError, KeyError, IndexError):
+                        continue
+                    if delta:
+                        yield delta
+                return
+        except httpx.HTTPError as e:
+            raise LLMError(t("AI кызматы жооп берген жок: {error}", error=e)) from e
+
+
+class ArrayStreamParser:
+    """Pull complete objects out of the `"<key>": [ {...}, {...}` array of a streaming JSON text."""
+
+    def __init__(self, key: str = "slides"):
+        self.key = f'"{key}"'
+        self.buf = ""
+        self.pos = -1      # index just after '[' once found
+        self.depth = 0
+        self.start = -1
+        self.in_str = False
+        self.esc = False
+
+    def feed(self, chunk: str) -> list[dict]:
+        self.buf += chunk
+        out: list[dict] = []
+        if self.pos < 0:
+            k = self.buf.find(self.key)
+            if k < 0:
+                return out
+            b = self.buf.find("[", k)
+            if b < 0:
+                return out
+            self.pos = b + 1
+        i = self.pos
+        while i < len(self.buf):
+            ch = self.buf[i]
+            if self.in_str:
+                if self.esc:
+                    self.esc = False
+                elif ch == "\\":
+                    self.esc = True
+                elif ch == '"':
+                    self.in_str = False
+            elif ch == '"':
+                self.in_str = True
+            elif ch == "{":
+                if self.depth == 0:
+                    self.start = i
+                self.depth += 1
+            elif ch == "}":
+                self.depth -= 1
+                if self.depth == 0 and self.start >= 0:
+                    try:
+                        out.append(json.loads(self.buf[self.start:i + 1]))
+                    except ValueError:
+                        pass
+                    self.start = -1
+            i += 1
+        self.pos = i
+        return out

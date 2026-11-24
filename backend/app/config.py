@@ -31,6 +31,12 @@ class Settings:
     llm_base_url: str = os.environ.get("LLM_BASE_URL", "https://api.groq.com/openai/v1")
     llm_model: str = os.environ.get("LLM_MODEL", "openai/gpt-oss-120b")
 
+    # slide pictures: "pollinations" (free AI images, no key), "placeholder" (local gradients), "none"
+    image_provider: str = os.environ.get("IMAGE_PROVIDER", "pollinations")
+    pollinations_token: str = os.environ.get("POLLINATIONS_TOKEN", "")  # optional: removes the rate limit
+    pollinations_url: str = os.environ.get("POLLINATIONS_URL", "https://image.pollinations.ai/prompt/")
+    max_images_per_deck: int = int(os.environ.get("MAX_IMAGES_PER_DECK", "6"))
+
     max_file_mb: int = int(os.environ.get("MAX_FILE_MB", "10"))
     max_docs_per_user: int = int(os.environ.get("MAX_DOCS_PER_USER", "30"))
     chunk_chars: int = int(os.environ.get("CHUNK_CHARS", "1000"))

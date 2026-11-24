@@ -9,7 +9,7 @@ export default async function Header() {
   const [user, d] = await Promise.all([getUser(), getDict()]);
   const link = "rounded-md px-3 py-1.5 text-sm text-dim hover:bg-sunk hover:text-ink";
   return (
-    <header className="sticky top-0 z-40 border-b border-line bg-paper/90 backdrop-blur">
+    <header className="no-print sticky top-0 z-40 border-b border-line bg-paper/90 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-[1500px] items-center justify-between gap-4 px-5">
         <div className="flex items-center gap-6">
           <Link href={user ? "/app" : "/"} aria-label="DocuMind"><Logo /></Link>

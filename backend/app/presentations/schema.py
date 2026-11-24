@@ -12,6 +12,14 @@ SlideType = Literal["title", "agenda", "bullets", "comparison", "stats", "timeli
 SLIDE_TYPES: tuple[str, ...] = SlideType.__args__  # type: ignore[attr-defined]
 
 STYLES = ("minimal", "modern", "corporate", "education", "academic", "creative")
+LAYOUTS = ("auto", "image-left", "image-right", "image-top", "none")
+# icon names the preview can draw (lucide); anything else is dropped
+ICONS = ("rocket", "target", "lightbulb", "users", "globe", "chart", "shield", "leaf", "heart", "book",
+         "graduation", "briefcase", "cpu", "zap", "clock", "calendar", "map-pin", "mountain", "sun", "dollar",
+         "trending-up", "award", "check", "star", "settings", "layers", "message", "handshake", "building",
+         "flag", "compass", "database", "lock", "smile", "sparkles", "puzzle", "coins", "plane", "camera", "music")
+# slide types that may carry a picture
+IMAGE_TYPES = ("title", "bullets", "quote", "conclusion", "agenda", "stats", "process", "thanks")
 LANGS = ("ky", "ru", "en")
 
 
@@ -119,6 +127,26 @@ class Slide(BaseModel):
     quote: str = ""
     author: str = ""
     notes: str = ""
+    # visual layer (Gamma-style cards)
+    layout: Literal[LAYOUTS] = "auto"  # type: ignore[valid-type]
+    image_prompt: str = ""
+    image_id: str = ""
+    icons: list[str] = Field(default_factory=list)
+
+    @field_validator("image_prompt")
+    @classmethod
+    def ip(cls, x):
+        return _clip(x, 300)
+
+    @field_validator("icons")
+    @classmethod
+    def ic(cls, xs):
+        return [x if x in ICONS else "" for x in (str(i).lower().strip() for i in xs[:6])]
+
+    @field_validator("layout", mode="before")
+    @classmethod
+    def lay(cls, x):
+        return x if x in LAYOUTS else "auto"
 
     @field_validator("title")
     @classmethod
@@ -155,10 +183,21 @@ class Slide(BaseModel):
             "chart": self.chart and len(self.chart.labels) >= 2 and len(self.chart.labels) == len(self.chart.values),
             "quote": bool(self.quote),
         }.get(self.type, True)
+        if self.type not in IMAGE_TYPES:
+            self.image_prompt, self.image_id = "", ""
         if ok:
             self.stats, self.events, self.steps = self.stats[:4], self.events[:6], self.steps[:5]
             return self
         return self.model_copy(update={"type": "bullets", "bullets": self.bullets or [self.subtitle or self.title]})
+
+
+def image_side(slide: "Slide") -> str | None:
+    """Where the picture goes for this slide, or None when it has no picture."""
+    if not slide.image_id or slide.layout == "none":
+        return None
+    if slide.layout != "auto":
+        return slide.layout.removeprefix("image-")
+    return {"title": "right", "quote": "left", "thanks": "top", "stats": "top", "process": "top"}.get(slide.type, "right")
 
 
 class Deck(BaseModel):

@@ -17,7 +17,7 @@ from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.oxml.ns import qn
 from pptx.util import Emu, Inches, Pt
 
-from .schema import Slide
+from .schema import Slide, image_side
 from .themes import THEMES, Theme
 
 W, H = 13.333, 7.5
@@ -51,6 +51,8 @@ class Builder:
         self.prs = PptxPresentation()
         self.prs.slide_width, self.prs.slide_height = Inches(W), Inches(H)
         self.blank = self.prs.slide_layouts[6]
+        self.X0, self.CW = M, W - 2 * M   # content frame; narrowed when a slide has a side picture
+        self.images: dict[str, bytes] = {}
 
     # ---------------------------------------------------------------- primitives
     def slide(self, dark: bool = False):
@@ -136,14 +138,37 @@ class Builder:
 
     def title(self, s, text, dark=False):
         size = 34 if len(text) <= 40 else 28 if len(text) <= 58 else 24
-        self.text(s, M, 0.45, W - 2 * M, 0.95, text, size=size, bold=True, font=self.t.head,
+        self.text(s, self.X0, 0.45, self.CW, 0.95, text, size=size, bold=True, font=self.t.head,
                   color=self.t.on_dark if dark else self.t.text, anchor=MSO_ANCHOR.MIDDLE, name="Title")
 
     def footer(self, s, n, dark=False):
         col = self.t.on_dark if dark else self.t.muted
-        self.text(s, M, H - 0.55, 7, 0.35, self.deck_title, size=11, color=col, autofit=False, name="Footer")
-        self.text(s, W - M - 1.6, H - 0.55, 1.6, 0.35, f"{n} / {self.total}", size=11, color=col,
+        self.text(s, self.X0, H - 0.55, min(7, self.CW - 1.8), 0.35, self.deck_title, size=11, color=col, autofit=False, name="Footer")
+        self.text(s, self.X0 + self.CW - 1.6, H - 0.55, 1.6, 0.35, f"{n} / {self.total}", size=11, color=col,
                   align=PP_ALIGN.RIGHT, autofit=False, name="Slide number")
+
+    def picture(self, s, data: bytes, x, y, w, h, name="Picture"):
+        """Insert an image cropped to fill the box (like CSS object-fit: cover)."""
+        from PIL import Image
+
+        iw, ih = Image.open(io.BytesIO(data)).size
+        pic = s.shapes.add_picture(io.BytesIO(data), Inches(x), Inches(y), Inches(w), Inches(h))
+        box_r, img_r = w / h, iw / ih
+        if img_r > box_r:      # too wide: crop the sides
+            cut = (1 - box_r / img_r) / 2
+            pic.crop_left = pic.crop_right = cut
+        else:                  # too tall: crop top and bottom
+            cut = (1 - img_r / box_r) / 2
+            pic.crop_top = pic.crop_bottom = cut
+        pic.name = name
+        return pic
+
+    def overlay(self, s, color: str, alpha: int):
+        """Full-slide translucent color (alpha 0-100) so text stays readable on a photo."""
+        sh = self.box(s, 0, 0, W, H, color, shape=MSO_SHAPE.RECTANGLE, name="Overlay")
+        clr = sh.fill._xPr.find(qn("a:solidFill")).find(qn("a:srgbClr"))
+        etree.SubElement(clr, qn("a:alpha")).set("val", str(alpha * 1000))
+        return sh
 
     def notes(self, s, text):
         if text:
@@ -160,13 +185,18 @@ class Builder:
     # ---------------------------------------------------------------- slide types
     def s_title(self, d: Slide, n):
         s = self.slide(dark=True)
-        # motif: two overlapping circles bleeding off the right edge
-        self.box(s, W - 4.6, -1.2, 6.2, 6.2, self.t.primary, shape=MSO_SHAPE.OVAL, name="Motif")
-        self.box(s, W - 3.0, 3.6, 3.6, 3.6, self.t.accent, shape=MSO_SHAPE.OVAL, name="Motif accent")
-        self.text(s, M, 2.0, 8.4, 2.4, d.title, size=46 if len(d.title) < 45 else 38, bold=True,
+        img = self.images.get(d.image_id) if image_side(d) else None
+        if img:
+            self.picture(s, img, W * 0.5, 0, W * 0.5, H, name="Title picture")
+        else:
+            # motif: two overlapping circles bleeding off the right edge
+            self.box(s, W - 4.6, -1.2, 6.2, 6.2, self.t.primary, shape=MSO_SHAPE.OVAL, name="Motif")
+            self.box(s, W - 3.0, 3.6, 3.6, 3.6, self.t.accent, shape=MSO_SHAPE.OVAL, name="Motif accent")
+        tw = W * 0.5 - M - 0.4 if img else 8.4
+        self.text(s, M, 2.0, tw, 2.4, d.title, size=46 if len(d.title) < 45 else 38, bold=True,
                   font=self.t.head, color=self.t.on_dark, anchor=MSO_ANCHOR.BOTTOM, spacing=1.0)
         if d.subtitle:
-            self.text(s, M, 4.55, 8.0, 1.3, d.subtitle, size=20, color=self.t.on_dark)
+            self.text(s, M, 4.55, tw, 1.3, d.subtitle, size=20, color=self.t.on_dark)
         return s
 
     def s_agenda(self, d: Slide, n):
@@ -175,10 +205,10 @@ class Builder:
         items = d.bullets[:6]
         cols = 2 if len(items) > 3 else 1
         rows = (len(items) + cols - 1) // cols
-        cw = (W - 2 * M - (cols - 1) * 0.5) / cols
+        cw = (self.CW - (cols - 1) * 0.5) / cols
         rh = min(1.15, (H - 2.0 - 1.0) / max(rows, 1))
         for i, item in enumerate(items):
-            cx = M + (i // rows) * (cw + 0.5)
+            cx = self.X0 + (i // rows) * (cw + 0.5)
             cy = 1.75 + (i % rows) * (rh + 0.2)
             self.box(s, cx, cy, cw, rh, self.card)
             self.badge(s, cx + 0.25, cy + (rh - 0.6) / 2, 0.6, f"{i + 1:02d}", size=15)
@@ -191,9 +221,16 @@ class Builder:
         items = d.bullets[:5]
         total = sum(len(b) for b in items)
         size = 20 if total < 260 else 18 if total < 400 else 16
-        if d.takeaway:
-            self.bullets(s, M, 1.75, 7.3, 4.7, items, size=size)
-            card = self.box(s, 8.55, 1.85, W - M - 8.55, 4.4, self.t.primary)
+        if d.takeaway and self.CW < 9:
+            self.bullets(s, self.X0, 1.75, self.CW, 3.3, items, size=min(size, 18))
+            card = self.box(s, self.X0, 5.2, self.CW, 1.15, self.t.primary)
+            self.text(s, 0, 0, 0, 0, d.takeaway, size=17, italic=True, bold=True, font=self.t.head,
+                      color=on(self.t.primary), anchor=MSO_ANCHOR.MIDDLE, shape=card)
+            card.text_frame.margin_left = card.text_frame.margin_right = Inches(0.35)
+        elif d.takeaway:
+            lw = self.CW * 0.58
+            self.bullets(s, self.X0, 1.75, lw, 4.7, items, size=size)
+            card = self.box(s, self.X0 + lw + 0.4, 1.85, self.CW - lw - 0.4, 4.4, self.t.primary)
             self.text(s, 0, 0, 0, 0, d.takeaway, size=24 if len(d.takeaway) < 90 else 20, italic=True,
                       bold=True, font=self.t.head, color=on(self.t.primary), anchor=MSO_ANCHOR.MIDDLE, shape=card)
             card.text_frame.margin_left = card.text_frame.margin_right = Inches(0.45)
@@ -202,21 +239,21 @@ class Builder:
             rh = min(0.95, (H - 1.85 - 0.9) / max(len(items), 1) - 0.15)
             for i, item in enumerate(items):
                 cy = 1.75 + i * (rh + 0.15)
-                self.box(s, M, cy, W - 2 * M, rh, self.card)
-                self.badge(s, M + 0.22, cy + (rh - 0.5) / 2, 0.5, i + 1, size=14,
+                self.box(s, self.X0, cy, self.CW, rh, self.card)
+                self.badge(s, self.X0 + 0.22, cy + (rh - 0.5) / 2, 0.5, i + 1, size=14,
                            fill=self.t.accent if i == 0 else self.t.primary)
-                self.text(s, M + 0.95, cy, W - 2 * M - 1.2, rh, item, size=size - 1, anchor=MSO_ANCHOR.MIDDLE)
+                self.text(s, self.X0 + 0.95, cy, self.CW - 1.2, rh, item, size=size - 1, anchor=MSO_ANCHOR.MIDDLE)
         return s
 
     def s_comparison(self, d: Slide, n):
         s = self.slide(self.t.dark_content)
         self.title(s, d.title, self.t.dark_content)
-        cw = (W - 2 * M - 0.5) / 2
+        cw = (self.CW - 0.5) / 2
         rows = max(len(d.left.points), len(d.right.points), 1)
         ch = min(4.75, 1.55 + rows * 0.78)
         top = 1.75 + (4.75 - ch) / 2
         for i, col in enumerate([d.left, d.right]):
-            cx = M + i * (cw + 0.5)
+            cx = self.X0 + i * (cw + 0.5)
             self.box(s, cx, top, cw, ch, self.card)
             head_fill = self.t.primary if i == 0 else self.t.accent
             pill = self.box(s, cx + 0.35, top + 0.3, cw - 0.7, 0.7, head_fill, radius=0.5)
@@ -230,30 +267,31 @@ class Builder:
         s = self.slide(self.t.dark_content)
         self.title(s, d.title, self.t.dark_content)
         k = len(d.stats)
-        cw = (W - 2 * M - (k - 1) * 0.4) / k
+        cw = (self.CW - (k - 1) * 0.4) / k
         for i, st in enumerate(d.stats):
-            cx = M + i * (cw + 0.4)
+            cx = self.X0 + i * (cw + 0.4)
             self.box(s, cx, 2.0, cw, 3.4, self.card)
-            vsize = 60 if len(st.value) <= 5 and k <= 3 else 48 if len(st.value) <= 7 else 36
+            fit = cw / max(len(st.value), 1) * 110   # ~points that keep the value on one line
+            vsize = int(min(60, max(28, fit)))
             self.text(s, cx + 0.2, 2.25, cw - 0.4, 1.6, st.value, size=vsize, bold=True, font=self.t.head,
                       color=self.t.accent if i % 2 else self.t.primary, align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.BOTTOM)
             self.text(s, cx + 0.3, 3.95, cw - 0.6, 1.3, st.label, size=16, color=self.t.muted, align=PP_ALIGN.CENTER)
         if d.subtitle:
-            self.text(s, M, 5.75, W - 2 * M, 0.7, d.subtitle, size=16, italic=True, color=self.t.muted)
+            self.text(s, self.X0, 5.75, self.CW, 0.7, d.subtitle, size=16, italic=True, color=self.t.muted)
         return s
 
     def s_timeline(self, d: Slide, n):
         s = self.slide(self.t.dark_content)
         self.title(s, d.title, self.t.dark_content)
         k = len(d.events)
-        step = (W - 2 * M) / k
+        step = (self.CW) / k
         ly = 3.55
-        line = s.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, Inches(M), Inches(ly), Inches(W - M), Inches(ly))
+        line = s.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, Inches(self.X0), Inches(ly), Inches((self.X0 + self.CW)), Inches(ly))
         line.line.color.rgb = rgb(self.t.muted)
         line.line.width = Pt(1.5)
         line.name = "Timeline axis"
         for i, ev in enumerate(d.events):
-            cx = M + i * step + step / 2
+            cx = self.X0 + i * step + step / 2
             self.box(s, cx - 0.17, ly - 0.17, 0.34, 0.34, self.t.accent if i == k - 1 else self.t.primary, shape=MSO_SHAPE.OVAL)
             self.text(s, cx - step / 2 + 0.05, 2.3, step - 0.1, 0.9, ev.when, size=22 if k <= 4 else 18, bold=True,
                       font=self.t.head, color=self.t.primary if not self.t.dark_content else self.t.accent,
@@ -271,8 +309,8 @@ class Builder:
         data.add_series(ch.unit or "value", ch.values)
         kind = {"bar": XL_CHART_TYPE.BAR_CLUSTERED, "column": XL_CHART_TYPE.COLUMN_CLUSTERED,
                 "pie": XL_CHART_TYPE.DOUGHNUT, "line": XL_CHART_TYPE.LINE_MARKERS}[ch.kind]
-        cw = 7.9 if d.takeaway else W - 2 * M
-        gf = s.shapes.add_chart(kind, Inches(M), Inches(1.65), Inches(cw), Inches(4.9), data)
+        cw = self.CW * 0.6 if d.takeaway else self.CW
+        gf = s.shapes.add_chart(kind, Inches(self.X0), Inches(1.65), Inches(cw), Inches(4.9), data)
         gf.name = "Chart"
         chart = gf.chart
         chart.has_title = False
@@ -324,7 +362,7 @@ class Builder:
             ca.tick_labels.font.color.rgb = rgb(self.t.text)
             ca.format.line.color.rgb = rgb(self.t.muted)
         if d.takeaway:
-            card = self.box(s, M + cw + 0.4, 1.95, W - 2 * M - cw - 0.4, 4.3, self.card)
+            card = self.box(s, self.X0 + cw + 0.4, 1.95, self.CW - cw - 0.4, 4.3, self.card)
             self.text(s, 0, 0, 0, 0, d.takeaway, size=21 if len(d.takeaway) < 100 else 18, bold=True,
                       font=self.t.head, color=self.ink, anchor=MSO_ANCHOR.MIDDLE, shape=card)
             card.text_frame.margin_left = card.text_frame.margin_right = Inches(0.35)
@@ -335,14 +373,15 @@ class Builder:
         self.title(s, d.title, self.t.dark_content)
         k = len(d.steps)
         gap = 0.45
-        cw = (W - 2 * M - (k - 1) * gap) / k
+        cw = (self.CW - (k - 1) * gap) / k
         for i, st in enumerate(d.steps):
-            cx = M + i * (cw + gap)
+            cx = self.X0 + i * (cw + gap)
             self.box(s, cx, 1.95, cw, 4.3, self.card)
             self.badge(s, cx + 0.3, 2.25, 0.75, i + 1, size=20, fill=self.t.accent if i == k - 1 else self.t.primary)
-            self.text(s, cx + 0.2, 3.2, cw - 0.4, 0.95, st.title, size=19 if k <= 4 else 17, bold=True,
+            narrow = cw < 2.3
+            self.text(s, cx + 0.2, 3.2, cw - 0.4, 0.95, st.title, size=15 if narrow else 19 if k <= 4 else 17, bold=True,
                       font=self.t.head, anchor=MSO_ANCHOR.BOTTOM)
-            self.text(s, cx + 0.2, 4.2, cw - 0.4, 1.9, st.text, size=15 if k <= 4 else 14, color=self.t.muted)
+            self.text(s, cx + 0.2, 4.2, cw - 0.4, 1.9, st.text, size=13 if narrow else 15 if k <= 4 else 14, color=self.t.muted)
             if i < k - 1:
                 arrow = self.box(s, cx + cw + 0.08, 3.95, gap - 0.16, 0.3, self.t.muted, shape=MSO_SHAPE.RIGHT_ARROW)
                 arrow.name = f"Arrow {i + 1}"
@@ -350,12 +389,12 @@ class Builder:
 
     def s_quote(self, d: Slide, n):
         s = self.slide(self.t.dark_content)
-        self.box(s, M, 1.0, W - 2 * M, H - 2.1, self.card)
-        self.text(s, M + 0.5, 1.05, 2, 1.6, "“", size=120, bold=True, font=self.t.head, color=self.t.accent, autofit=False)
-        self.text(s, M + 1.3, 2.0, W - 2 * M - 2.3, 2.9, d.quote, size=30 if len(d.quote) < 120 else 24,
+        self.box(s, self.X0, 1.0, self.CW, H - 2.1, self.card)
+        self.text(s, self.X0 + 0.5, 1.05, 2, 1.6, "“", size=120, bold=True, font=self.t.head, color=self.t.accent, autofit=False)
+        self.text(s, self.X0 + 1.3, 2.0, self.CW - 2.3, 2.9, d.quote, size=30 if len(d.quote) < 120 else 24,
                   italic=True, font=self.t.head, anchor=MSO_ANCHOR.MIDDLE)
         if d.author:
-            self.text(s, M + 1.3, 5.1, W - 2 * M - 2.3, 0.6, f"— {d.author}", size=18, bold=True, color=self.t.muted)
+            self.text(s, self.X0 + 1.3, 5.1, self.CW - 2.3, 0.6, f"— {d.author}", size=18, bold=True, color=self.t.muted)
         return s
 
     def s_conclusion(self, d: Slide, n):
@@ -364,10 +403,10 @@ class Builder:
         items = d.bullets[:4]
         for i, item in enumerate(items):
             cy = 1.85 + i * 0.95
-            self.badge(s, M, cy + 0.1, 0.55, "✓", fill=self.t.accent, size=16)
-            self.text(s, M + 0.85, cy, W - 2 * M - 0.9, 0.8, item, size=20, color=self.t.on_dark, anchor=MSO_ANCHOR.MIDDLE)
+            self.badge(s, self.X0, cy + 0.1, 0.55, "✓", fill=self.t.accent, size=16)
+            self.text(s, self.X0 + 0.85, cy, self.CW - 0.9, 0.8, item, size=20, color=self.t.on_dark, anchor=MSO_ANCHOR.MIDDLE)
         if d.takeaway:
-            pill = self.box(s, M, 5.85, min(W - 2 * M, 0.6 + len(d.takeaway) * 0.13), 0.75, self.t.primary, radius=0.5)
+            pill = self.box(s, self.X0, 5.85, min(self.CW, 0.6 + len(d.takeaway) * 0.13), 0.75, self.t.primary, radius=0.5)
             self.text(s, 0, 0, 0, 0, d.takeaway, size=18, bold=True, color=on(self.t.primary),
                       anchor=MSO_ANCHOR.MIDDLE, shape=pill)
             pill.text_frame.margin_left = Inches(0.3)
@@ -375,8 +414,13 @@ class Builder:
 
     def s_thanks(self, d: Slide, n):
         s = self.slide(dark=True)
-        self.box(s, -1.6, H - 3.2, 4.6, 4.6, self.t.primary, shape=MSO_SHAPE.OVAL, name="Motif")
-        self.box(s, W - 2.4, -1.0, 3.2, 3.2, self.t.accent, shape=MSO_SHAPE.OVAL, name="Motif accent")
+        img = self.images.get(d.image_id) if image_side(d) else None
+        if img:
+            self.picture(s, img, 0, 0, W, H, name="Background picture")
+            self.overlay(s, self.t.dark, 62)
+        else:
+            self.box(s, -1.6, H - 3.2, 4.6, 4.6, self.t.primary, shape=MSO_SHAPE.OVAL, name="Motif")
+            self.box(s, W - 2.4, -1.0, 3.2, 3.2, self.t.accent, shape=MSO_SHAPE.OVAL, name="Motif accent")
         self.text(s, 1.5, 2.3, W - 3.0, 1.6, d.title, size=48, bold=True, font=self.t.head,
                   color=self.t.on_dark, align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.BOTTOM)
         if d.subtitle:
@@ -386,11 +430,20 @@ class Builder:
     # ---------------------------------------------------------------- deck
     def add(self, d: Slide, n: int):
         d = d.usable()
+        side = image_side(d) if d.type not in ("title", "thanks") else None
+        img = self.images.get(d.image_id) if side else None
+        pw = 3.6 if d.type in ("process", "stats", "agenda", "comparison", "timeline") else 5.0
+        if img:
+            side = "left" if side == "left" else "right"
+            self.X0, self.CW = (pw + 0.55, W - pw - 0.55 - M) if side == "left" else (M, W - pw - 0.55 - M)
         s = getattr(self, f"s_{d.type}")(d, n)
+        if img:
+            self.picture(s, img, 0 if side == "left" else W - pw, 0, pw, H, name="Slide picture")
         dark = d.type in ("title", "conclusion", "thanks") or self.t.dark_content
         if d.type not in ("title", "thanks"):
             self.footer(s, n, dark)
         self.notes(s, d.notes)
+        self.X0, self.CW = M, W - 2 * M
 
     def save(self) -> bytes:
         self.prs.core_properties.title = self.deck_title
@@ -400,9 +453,10 @@ class Builder:
         return buf.getvalue()
 
 
-def build_pptx(slides: list[dict], style: str, title: str) -> bytes:
+def build_pptx(slides: list[dict], style: str, title: str, images: dict[str, bytes] | None = None) -> bytes:
     theme = THEMES.get(style, THEMES["modern"])
     b = Builder(theme, title, len(slides))
+    b.images = images or {}
     for i, raw in enumerate(slides, 1):
         b.add(Slide.model_validate(raw), i)
     return b.save()

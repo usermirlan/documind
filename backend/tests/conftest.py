@@ -6,6 +6,7 @@ os.environ["EMBED_PROVIDER"] = "fake"
 os.environ["INGEST_INLINE"] = "1"
 os.environ["SECRET_KEY"] = "test-secret-key-long-enough-for-hs256-0123456789"
 os.environ["LLM_API_KEY"] = ""
+os.environ["IMAGE_PROVIDER"] = "placeholder"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -30,7 +31,7 @@ def schema():
 def clean():
     yield
     with engine.begin() as conn:
-        conn.execute(text("TRUNCATE users, documents, chunks, chats, messages RESTART IDENTITY CASCADE"))
+        conn.execute(text("TRUNCATE users, documents, chunks, chats, messages, summaries, presentations, slide_images RESTART IDENTITY CASCADE"))
 
 
 @pytest.fixture

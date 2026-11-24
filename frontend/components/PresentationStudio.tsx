@@ -4,10 +4,9 @@ import { useCallback, useEffect, useState, useTransition } from "react";
 import { deletePresentation, generatePresentation, getPresentation, regenerateOutline, savePresentation } from "@/app/actions";
 import type { Outline, OutlineSlide, Presentation, SlideType } from "@/lib/types";
 import { useI18n } from "./I18n";
-import SlidePreview from "./SlidePreview";
+import DeckEditor from "./DeckEditor";
 
 const TYPES: SlideType[] = ["title", "agenda", "bullets", "comparison", "stats", "timeline", "chart", "process", "quote", "conclusion", "thanks"];
-const STYLES = ["modern", "corporate", "minimal", "education", "academic", "creative"];
 
 function Working({ text, hint }: { text: string; hint: string }) {
   return (
@@ -24,13 +23,13 @@ export default function PresentationStudio({ initial }: { initial: Presentation 
   const [p, setP] = useState(initial);
   const [outline, setOutline] = useState<Outline | null>(initial.outline?.slides ? (initial.outline as Outline) : null);
   const [editing, setEditing] = useState(false);
-  const [current, setCurrent] = useState(0);
   const [msg, setMsg] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const busy = p.status === "draft_outline" || p.status === "generating";
+  const busy = p.status === "draft_outline";
 
   const apply = useCallback((next: Presentation) => {
     setP(next);
+    if (next.status === "generating") setEditing(false);
     if (next.outline?.slides) setOutline(next.outline as Outline);
   }, []);
 
@@ -41,7 +40,7 @@ export default function PresentationStudio({ initial }: { initial: Presentation 
       const r = await getPresentation(p.id);
       if (r.ok) {
         apply(r.data);
-        if (r.data.status === "ready") { setEditing(false); setCurrent(0); }
+        if (r.data.status === "ready") setEditing(false);
       }
     }, 2000);
     return () => clearInterval(t);
@@ -68,7 +67,7 @@ export default function PresentationStudio({ initial }: { initial: Presentation 
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className={`flex flex-wrap items-start justify-between gap-4 ${p.status === "ready" && !editing ? "hidden" : ""}`}>
         <div className="min-w-0">
           <h1 className="font-serif text-3xl font-semibold">{p.title}</h1>
           <p className="mt-1 text-sm text-dim">
@@ -84,7 +83,7 @@ export default function PresentationStudio({ initial }: { initial: Presentation 
       {msg && <p role="alert" className="rounded-lg border border-bad/30 bg-bad/5 px-3 py-2 text-sm text-bad">{msg}</p>}
 
       {p.status === "draft_outline" && <Working text={d.pres.outlining} hint={d.pres.waitHint} />}
-      {p.status === "generating" && <Working text={d.pres.generating} hint={d.pres.waitHint} />}
+
       {p.status === "error" && !outline && (
         <button disabled={pending} onClick={() => act(() => regenerateOutline(p.id))} className={`${btn} self-start`}>{d.pres.regenOutline}</button>
       )}
@@ -137,34 +136,8 @@ export default function PresentationStudio({ initial }: { initial: Presentation 
         </section>
       )}
 
-      {!busy && !editing && p.status === "ready" && p.slides.length > 0 && (
-        <section className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <a href={`/api/pptx/${p.id}`} className="rounded-lg bg-accent px-5 py-2.5 font-medium text-white hover:brightness-110">{d.pres.download}</a>
-            <select value={p.style} aria-label={d.pres.style} disabled={pending}
-              onChange={(e) => act(() => savePresentation(p.id, { style: e.target.value }))}
-              className="rounded-lg border border-line bg-card px-3 py-2.5 text-sm">
-              {STYLES.map((s) => <option key={s} value={s}>{d.pres.style}: {d.pres.styles[s]}</option>)}
-            </select>
-            <button onClick={() => setEditing(true)} className={btn}>{d.pres.editOutline}</button>
-            <button disabled={pending} onClick={() => act(() => generatePresentation(p.id))} className={btn}>{d.pres.regenerate}</button>
-          </div>
-          <div className="overflow-hidden rounded-xl border border-line shadow-[0_20px_50px_-30px_rgba(29,27,23,.5)]">
-            <SlidePreview slide={p.slides[current]} style={p.style} n={current + 1} total={p.slides.length} deckTitle={p.title} />
-          </div>
-          {p.slides[current]?.notes && (
-            <p className="rounded-lg bg-sunk px-4 py-3 text-sm text-dim"><span className="font-medium text-ink">{d.pres.notes}: </span>{p.slides[current].notes}</p>
-          )}
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 lg:grid-cols-6">
-            {p.slides.map((s, i) => (
-              <button key={i} onClick={() => setCurrent(i)} aria-label={`${i + 1}`} aria-pressed={current === i}
-                className={`overflow-hidden rounded-md border-2 ${current === i ? "border-accent" : "border-transparent hover:border-line"}`}>
-                <div className="pointer-events-none"><SlidePreview slide={s} style={p.style} n={i + 1} total={p.slides.length} deckTitle={p.title} /></div>
-              </button>
-            ))}
-          </div>
-          <p className="text-xs text-dim">{d.pres.previewNote}</p>
-        </section>
+      {(p.status === "generating" || (p.status === "ready" && !editing)) && (
+        <DeckEditor key={`${p.id}-${p.status}`} initial={p} onEditOutline={() => setEditing(true)} />
       )}
     </div>
   );
